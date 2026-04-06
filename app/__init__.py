@@ -168,3 +168,7 @@ def register_shell_context(app):
             "QuizSubmission": QuizSubmission,
             "QuizAnswer": QuizAnswer,
         }
+
+
+# Allow gunicorn to load "app:app" when Render start command is misconfigured.
+app = create_app()
