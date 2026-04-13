@@ -247,6 +247,13 @@ Teachers/coaches can curate resources for each batch.
 - `GET /api/v1/reports/batch-strength`
 - `GET /api/v1/reports/active-vs-inactive`
 
+### Export Module
+- `GET /api/v1/reports/export/results.xlsx`
+- `GET /api/v1/reports/export/revenue.pdf`
+
+### Calendar Module
+- `GET /api/v1/calendar/events`
+
 ---
 
 ## Role Protected Routes

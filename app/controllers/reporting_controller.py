@@ -4,9 +4,11 @@ from app.core.exceptions import ValidationError
 from app.services.reporting_service import (
     get_active_vs_inactive_report,
     get_batch_strength_report,
+    get_director_risk_summary,
     get_monthly_attendance_percentage,
     get_revenue_by_month,
     get_salary_expense_by_month,
+    get_smart_nudges,
 )
 from app.utils.response import api_response
 
@@ -57,3 +59,21 @@ def batch_strength_controller():
 def active_vs_inactive_controller():
     data = get_active_vs_inactive_report()
     return api_response(True, "Active vs inactive report generated", data, 200)
+
+
+def risk_summary_controller():
+    days = request.args.get("days", default=30, type=int)
+    if days is None or days < 1 or days > 365:
+        raise ValidationError("days must be between 1 and 365")
+
+    data = get_director_risk_summary(days=days)
+    return api_response(True, "Director risk summary generated", data, 200)
+
+
+def smart_nudges_controller():
+    limit = request.args.get("limit", default=8, type=int)
+    if limit is None or limit < 1 or limit > 25:
+        raise ValidationError("limit must be between 1 and 25")
+
+    data = get_smart_nudges(limit=limit)
+    return api_response(True, "Smart nudges generated", data, 200)

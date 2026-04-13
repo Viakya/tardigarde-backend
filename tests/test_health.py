@@ -12,17 +12,6 @@ class TestHealthEndpoint:
         assert "healthy" in body["message"].lower()
 
 
-class TestWakeupEndpoint:
-    """GET /api/v1/wakeup"""
-
-    def test_wakeup_returns_200(self, client):
-        resp = client.get("/api/v1/wakeup")
-        assert resp.status_code == 200
-        body = resp.get_json()
-        assert body["success"] is True
-        assert "awake" in body["message"].lower()
-
-
 class TestRootEndpoints:
     """GET / and GET /api/v1"""
 
@@ -32,7 +21,6 @@ class TestRootEndpoints:
         body = resp.get_json()
         assert body["success"] is True
         assert body["data"]["base_url"] == "/api/v1"
-        assert body["data"]["wakeup"] == "/api/v1/wakeup"
 
     def test_api_v1_root_returns_200(self, client):
         resp = client.get("/api/v1")
@@ -40,7 +28,6 @@ class TestRootEndpoints:
         body = resp.get_json()
         assert body["success"] is True
         assert "reachable" in body["message"].lower()
-        assert body["data"]["wakeup"] == "/api/v1/wakeup"
 
     def test_unknown_route_returns_404(self, client):
         resp = client.get("/api/v1/nonexistent")

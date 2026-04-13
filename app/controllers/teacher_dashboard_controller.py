@@ -17,6 +17,7 @@ from app.services.teacher_dashboard_service import (
     get_teacher_dashboard_summary,
     get_attendance_history,
     get_student_profile,
+    get_batch_quiz_performance,
 )
 
 
@@ -166,3 +167,10 @@ def get_student_profile_controller(student_id):
     user_id = get_jwt_identity()
     result = get_student_profile(user_id, student_id)
     return api_response(True, "Student profile retrieved", data=result)
+
+
+def get_batch_quiz_performance_controller(batch_id):
+    """Get quiz reports and rankings for a batch"""
+    user_id = get_jwt_identity()
+    result = get_batch_quiz_performance(user_id, batch_id)
+    return api_response(True, "Quiz performance retrieved", data=result)

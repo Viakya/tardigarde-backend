@@ -47,3 +47,11 @@ def validate_google_login_payload(payload):
     return {
         "credential": credential,
     }
+
+
+def validate_bulk_registration_row(payload):
+    if not isinstance(payload, dict):
+        raise ValidationError("Invalid row payload")
+
+    # Reuse single-user validation so rules stay consistent.
+    return validate_registration_payload(payload)

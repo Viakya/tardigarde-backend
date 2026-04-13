@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required
 
 from app.controllers.student_controller import (
     create_student_controller,
+    create_students_bulk_controller,
     delete_student_controller,
     get_student_controller,
     get_my_student_profile_controller,
@@ -18,7 +19,7 @@ students_bp = Blueprint("students", __name__)
 
 
 @students_bp.post("/students")
-@roles_required("director", "manager")
+@roles_required("director", "manager", "admin")
 @swag_from(
     {
         "tags": ["Students"],
@@ -40,6 +41,34 @@ students_bp = Blueprint("students", __name__)
 )
 def create_student_route():
     return create_student_controller()
+
+
+@students_bp.post("/students/bulk")
+@roles_required("director", "manager", "admin")
+@swag_from(
+    {
+        "tags": ["Students"],
+        "summary": "Bulk create student profiles via CSV upload",
+        "security": [{"BearerAuth": []}],
+        "consumes": ["multipart/form-data"],
+        "parameters": [
+            {
+                "name": "file",
+                "in": "formData",
+                "type": "file",
+                "required": True,
+                "description": "CSV with user_id and optional student profile fields",
+            }
+        ],
+        "responses": {
+            201: {"schema": {"$ref": "#/definitions/StandardResponse"}},
+            207: {"schema": {"$ref": "#/definitions/StandardResponse"}},
+            400: {"schema": {"$ref": "#/definitions/StandardResponse"}},
+        },
+    }
+)
+def create_students_bulk_route():
+    return create_students_bulk_controller()
 
 
 @students_bp.get("/students")

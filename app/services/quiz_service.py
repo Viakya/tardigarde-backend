@@ -7,10 +7,20 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions import AuthenticationError, ConflictError, ValidationError
 from app.extensions import db
 from app.models import Batch, Quiz, QuizAnswer, QuizQuestion, QuizSubmission, Student, Teacher
-from app.services.ai_service import generate_quiz_structure
+from app.services.ai_service import analyze_quiz_submission_report, generate_quiz_structure
 
 
 QUESTION_MAX = 50
+
+
+def _extract_attempt_number(status_value):
+    status = str(status_value or "").strip().lower()
+    if status.startswith("attempt_"):
+        try:
+            return int(status.split("_", 1)[1])
+        except (TypeError, ValueError):
+            return 1
+    return 1
 
 
 def _normalize_ai_questions(questions):
@@ -230,10 +240,12 @@ def get_quiz_detail(quiz_id, current_user_id, role, include_questions=True):
         if submission:
             answers_map = {answer.question_id: answer.selected_option for answer in submission.answers}
         payload["student_submission"] = submission.to_dict() if submission else None
+        if payload.get("student_submission"):
+            payload["student_submission"]["attempt_number"] = _extract_attempt_number(submission.status)
         show_correct = quiz.mode == "graded" and quiz.status == "closed"
-        show_explanation = show_correct or (quiz.mode == "practice" and submission is not None)
+        show_explanation = show_correct
         for question in payload.get("questions", []):
-            question["student_answer"] = answers_map.get(question.get("id"))
+            question["student_answer"] = answers_map.get(question.get("id")) if show_correct else None
             if not show_correct:
                 question.pop("correct_option", None)
             if not show_explanation:
@@ -364,6 +376,14 @@ def submit_quiz(quiz_id, answers, current_user_id, role):
 
     existing = QuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=student.id).first()
 
+    # Graded quizzes are single-attempt only.
+    if quiz.mode == "graded" and existing:
+        raise ValidationError("Graded quiz can only be attempted once", 409)
+
+    previous_score = float(existing.score) if existing and existing.score is not None else None
+    previous_attempt = _extract_attempt_number(existing.status) if existing else 0
+    current_attempt = previous_attempt + 1
+
     questions_map = {q.id: q for q in quiz.questions}
     if not questions_map:
         raise ValidationError("Quiz has no questions")
@@ -372,7 +392,7 @@ def submit_quiz(quiz_id, answers, current_user_id, role):
     if existing:
         submission = existing
         submission.submitted_at = datetime.utcnow()
-        submission.status = "submitted"
+        submission.status = f"attempt_{current_attempt}"
         submission.score = None
         submission.answers.clear()
     else:
@@ -380,7 +400,7 @@ def submit_quiz(quiz_id, answers, current_user_id, role):
             quiz_id=quiz.id,
             student_id=student.id,
             submitted_at=datetime.utcnow(),
-            status="submitted",
+            status="attempt_1",
         )
         db.session.add(submission)
 
@@ -410,7 +430,114 @@ def submit_quiz(quiz_id, answers, current_user_id, role):
         db.session.rollback()
         raise ConflictError("Failed to submit quiz") from exc
 
-    return submission
+    question_feedback = []
+    correct_answers = 0
+    attempted_answers = 0
+
+    answer_map = {item.question_id: item for item in submission.answers}
+    for question in quiz.questions:
+        answer = answer_map.get(question.id)
+        selected_option = answer.selected_option if answer else None
+        is_correct = bool(answer.is_correct) if answer else False
+        marks_awarded = float(answer.marks_awarded) if answer and answer.marks_awarded is not None else 0.0
+        attempted = selected_option is not None
+        if attempted:
+            attempted_answers += 1
+        if is_correct:
+            correct_answers += 1
+
+        question_feedback.append(
+            {
+                "question_id": question.id,
+                "question": question.question_text,
+                "selected_option": selected_option,
+                "correct_option": question.correct_option,
+                "is_correct": is_correct,
+                "marks_awarded": marks_awarded,
+                "max_marks": float(question.marks or 0),
+                "explanation": question.explanation,
+            }
+        )
+
+    total_questions = len(quiz.questions)
+    incorrect_answers = total_questions - correct_answers
+    score_value = float(submission.score or 0)
+    total_marks = float(quiz.total_marks or 100)
+    percentage = round((score_value / total_marks) * 100, 2) if total_marks > 0 else 0
+
+    report = {
+        "quiz_id": quiz.id,
+        "quiz_title": quiz.title,
+        "mode": quiz.mode,
+        "score": score_value,
+        "total_marks": total_marks,
+        "percentage": percentage,
+        "attempted_answers": attempted_answers,
+        "correct_answers": correct_answers,
+        "incorrect_answers": incorrect_answers,
+        "attempt_number": current_attempt,
+        "previous_attempt_score": previous_score,
+        "current_attempt_score": score_value,
+        "question_feedback": question_feedback,
+    }
+
+    ai_analysis = None
+    analysis_source = "ai_model"
+    try:
+        ai_analysis = analyze_quiz_submission_report(report)
+    except Exception:  # noqa: BLE001
+        analysis_source = "rule_based_fallback"
+        wrong_questions = [
+            item.get("question")
+            for item in question_feedback
+            if not item.get("is_correct") and item.get("question")
+        ]
+        strengths = []
+        if correct_answers > 0:
+            strengths.append(f"You answered {correct_answers} question(s) correctly.")
+        if attempted_answers == total_questions:
+            strengths.append("You attempted all questions in this quiz.")
+
+        weaknesses = []
+        for question_text in wrong_questions[:3]:
+            weaknesses.append(f"Needs revision: {question_text}")
+        if not weaknesses:
+            weaknesses.append("Focus on maintaining consistent accuracy across all questions.")
+
+        suggestions = [
+            "Revisit explanations for questions marked incorrect.",
+            "Practice one more quiz on the same topic to improve retention.",
+        ]
+        if wrong_questions:
+            suggestions.append("Discuss the weak questions with your coach for targeted improvement.")
+
+        ai_analysis = {
+            "summary": (
+                f"You scored {score_value} out of {total_marks} with {correct_answers} correct answer(s). "
+                f"Review weak questions to improve your next attempt."
+            ),
+            "strengths": strengths or ["Submission completed successfully."],
+            "weaknesses": weaknesses,
+            "suggestions": suggestions,
+        }
+
+    wrong_questions = [
+        item.get("question")
+        for item in question_feedback
+        if not item.get("is_correct") and item.get("question")
+    ]
+    if wrong_questions:
+        existing_weaknesses = ai_analysis.get("weaknesses") or []
+        for question_text in wrong_questions[:3]:
+            candidate = f"Mistake area: {question_text}"
+            if candidate not in existing_weaknesses:
+                existing_weaknesses.append(candidate)
+        ai_analysis["weaknesses"] = existing_weaknesses[:6]
+
+    ai_analysis["source"] = analysis_source
+
+    report["ai_analysis"] = ai_analysis
+    return {"submission": submission, "report": report}
 
 
 def delete_quiz(quiz_id, current_user_id, role):

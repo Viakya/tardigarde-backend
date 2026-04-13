@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import ValidationError, ConflictError
 from app.extensions import db
-from app.models import User, Teacher, Batch, Student, Attendance, Test, TestResult
+from app.models import User, Teacher, Batch, Student, Attendance, Test, TestResult, Quiz, QuizSubmission
 
 
 def get_teacher_by_user_id(user_id):
@@ -695,4 +695,124 @@ def get_attendance_history(user_id, batch_id, start_date=None, end_date=None):
             for date_key, stats in sorted(date_stats.items(), reverse=True)
         ],
         "records": [r.to_dict() for r in attendance_records],
+    }
+
+
+def get_batch_quiz_performance(user_id, batch_id):
+    """Get quiz result reports, rankings, and summary insights for one batch."""
+    teacher = get_teacher_by_user_id(user_id)
+
+    batch = Batch.query.filter_by(id=batch_id, is_active=True).first()
+    if not batch:
+        raise ValidationError("Batch not found", 404)
+
+    if teacher not in batch.teachers:
+        raise ValidationError("You are not assigned to this batch", 403)
+
+    quizzes = (
+        Quiz.query.filter(
+            Quiz.batch_id == batch_id,
+            Quiz.mode == "graded",
+            Quiz.status.in_(["published", "closed"]),
+        )
+        .order_by(Quiz.created_at.desc())
+        .all()
+    )
+    students = Student.query.filter_by(batch_id=batch_id, is_active=True).all()
+    student_map = {student.id: student for student in students}
+
+    quiz_rows = []
+    ranking_map = {}
+
+    for quiz in quizzes:
+        submissions = QuizSubmission.query.filter_by(quiz_id=quiz.id).all()
+        quiz_scores = [float(sub.score or 0) for sub in submissions if sub.score is not None]
+        avg_score = round(sum(quiz_scores) / len(quiz_scores), 2) if quiz_scores else 0
+        highest_score = round(max(quiz_scores), 2) if quiz_scores else 0
+        submission_rate = round((len(submissions) / len(students) * 100), 1) if students else 0
+
+        top_submissions = sorted(submissions, key=lambda s: float(s.score or 0), reverse=True)[:5]
+        top_students = []
+        for sub in top_submissions:
+            student = student_map.get(sub.student_id)
+            top_students.append(
+                {
+                    "student_id": sub.student_id,
+                    "student_name": student.user.full_name if student and student.user else "Unknown",
+                    "score": float(sub.score or 0),
+                }
+            )
+
+        quiz_rows.append(
+            {
+                "quiz_id": quiz.id,
+                "title": quiz.title,
+                "mode": quiz.mode,
+                "status": quiz.status,
+                "question_count": quiz.question_count,
+                "total_marks": float(quiz.total_marks or 100),
+                "submissions_count": len(submissions),
+                "submission_rate": submission_rate,
+                "average_score": avg_score,
+                "highest_score": highest_score,
+                "top_students": top_students,
+                "created_at": quiz.created_at.isoformat() if quiz.created_at else None,
+            }
+        )
+
+        for sub in submissions:
+            score = float(sub.score or 0)
+            bucket = ranking_map.setdefault(
+                sub.student_id,
+                {
+                    "student_id": sub.student_id,
+                    "student_name": "Unknown",
+                    "attempted_quizzes": 0,
+                    "total_score": 0.0,
+                    "best_score": 0.0,
+                },
+            )
+            student = student_map.get(sub.student_id)
+            if student and student.user:
+                bucket["student_name"] = student.user.full_name
+            bucket["attempted_quizzes"] += 1
+            bucket["total_score"] += score
+            bucket["best_score"] = max(float(bucket["best_score"]), score)
+
+    rankings = []
+    for item in ranking_map.values():
+        attempts = item["attempted_quizzes"] or 1
+        avg_score = round(item["total_score"] / attempts, 2)
+        rankings.append(
+            {
+                "student_id": item["student_id"],
+                "student_name": item["student_name"],
+                "attempted_quizzes": item["attempted_quizzes"],
+                "average_score": avg_score,
+                "best_score": round(float(item["best_score"]), 2),
+            }
+        )
+
+    rankings.sort(key=lambda row: (row["average_score"], row["best_score"]), reverse=True)
+    for index, row in enumerate(rankings, start=1):
+        row["rank"] = index
+
+    return {
+        "batch": {
+            "id": batch.id,
+            "batch_name": batch.batch_name,
+            "year": batch.year,
+            "student_count": len(students),
+        },
+        "summary": {
+            "total_quizzes": len(quizzes),
+            "total_submissions": sum(item["submissions_count"] for item in quiz_rows),
+            "average_submission_rate": round(
+                sum(item["submission_rate"] for item in quiz_rows) / len(quiz_rows), 1
+            )
+            if quiz_rows
+            else 0,
+        },
+        "quiz_results": quiz_rows,
+        "rankings": rankings,
     }

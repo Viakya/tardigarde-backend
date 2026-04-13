@@ -73,3 +73,42 @@ class TestActiveVsInactive:
     def test_active_vs_inactive_rbac(self, client, auth_headers):
         resp = client.get("/api/v1/reports/active-vs-inactive", headers=auth_headers("student"))
         assert resp.status_code == 403
+
+
+class TestRiskSummary:
+    """GET /api/v1/reports/risk-summary"""
+
+    def test_risk_summary(self, client, auth_headers):
+        resp = client.get("/api/v1/reports/risk-summary", headers=auth_headers("director"))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert "summary" in body["data"]
+        assert "top_risks" in body["data"]
+
+    def test_risk_summary_invalid_days(self, client, auth_headers):
+        resp = client.get("/api/v1/reports/risk-summary?days=0", headers=auth_headers("director"))
+        assert resp.status_code == 400
+
+    def test_risk_summary_rbac(self, client, auth_headers):
+        resp = client.get("/api/v1/reports/risk-summary", headers=auth_headers("student"))
+        assert resp.status_code == 403
+
+
+class TestSmartNudges:
+    """GET /api/v1/reports/smart-nudges"""
+
+    def test_smart_nudges(self, client, auth_headers):
+        resp = client.get("/api/v1/reports/smart-nudges", headers=auth_headers("director"))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert isinstance(body["data"].get("nudges"), list)
+
+    def test_smart_nudges_invalid_limit(self, client, auth_headers):
+        resp = client.get("/api/v1/reports/smart-nudges?limit=0", headers=auth_headers("director"))
+        assert resp.status_code == 400
+
+    def test_smart_nudges_rbac(self, client, auth_headers):
+        resp = client.get("/api/v1/reports/smart-nudges", headers=auth_headers("student"))
+        assert resp.status_code == 403

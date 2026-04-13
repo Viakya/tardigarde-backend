@@ -9,6 +9,7 @@ from app.controllers.auth_controller import (
     google_login_user,
     login_user,
     protected_example,
+    register_users_bulk,
     registered_users,
     register_user,
     update_user_controller,
@@ -41,6 +42,34 @@ auth_bp = Blueprint("auth", __name__)
 )
 def register_route():
     return register_user()
+
+
+@auth_bp.post("/auth/register/bulk")
+@roles_required("admin", "director", "manager")
+@swag_from(
+    {
+        "tags": ["Auth"],
+        "summary": "Bulk register users via CSV upload",
+        "security": [{"BearerAuth": []}],
+        "consumes": ["multipart/form-data"],
+        "parameters": [
+            {
+                "name": "file",
+                "in": "formData",
+                "type": "file",
+                "required": True,
+                "description": "CSV with headers: email,full_name,password,role",
+            }
+        ],
+        "responses": {
+            201: {"schema": {"$ref": "#/definitions/StandardResponse"}},
+            207: {"schema": {"$ref": "#/definitions/StandardResponse"}},
+            400: {"schema": {"$ref": "#/definitions/StandardResponse"}},
+        },
+    }
+)
+def register_bulk_route():
+    return register_users_bulk()
 
 
 @auth_bp.post("/auth/login")

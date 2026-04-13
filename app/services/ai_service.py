@@ -829,6 +829,91 @@ def get_parent_weekly_digest(parent_user_id: int, student_id: int, focus: str | 
     }
 
 
+def _force_quiz_analysis(payload: dict[str, Any], fallback: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    strengths = payload.get("strengths") if isinstance(payload.get("strengths"), list) else []
+    weaknesses = payload.get("weaknesses") if isinstance(payload.get("weaknesses"), list) else []
+    suggestions = payload.get("suggestions") if isinstance(payload.get("suggestions"), list) else []
+    summary = payload.get("summary") if isinstance(payload.get("summary"), str) else ""
+
+    strengths = [str(item) for item in strengths[:4] if isinstance(item, (str, int, float))]
+    weaknesses = [str(item) for item in weaknesses[:4] if isinstance(item, (str, int, float))]
+    suggestions = [str(item) for item in suggestions[:5] if isinstance(item, (str, int, float))]
+
+    if not summary:
+        summary = (
+            f"You scored {fallback.get('score', 0)} out of {fallback.get('total_marks', 100)} "
+            f"with {fallback.get('correct', 0)} correct answers."
+        )
+    question_feedback = report.get("question_feedback") or []
+    wrong_questions = [
+        str(item.get("question"))
+        for item in question_feedback
+        if isinstance(item, dict) and not item.get("is_correct") and item.get("question")
+    ]
+    correct_answers = int(report.get("correct_answers") or 0)
+    total_questions = len(question_feedback) or int(report.get("attempted_answers") or 0)
+
+    if not strengths:
+        strengths = []
+        if total_questions:
+            strengths.append(f"Accuracy snapshot: {correct_answers}/{total_questions} questions correct.")
+        if (report.get("attempted_answers") or 0) == total_questions and total_questions:
+            strengths.append("You attempted all questions in this test.")
+        if not strengths:
+            strengths = ["Submission completed successfully."]
+
+    if not weaknesses:
+        weaknesses = [f"Mistake area: {question}" for question in wrong_questions[:3]]
+        if not weaknesses:
+            weaknesses = ["No major weak areas detected in this attempt."]
+
+    if not suggestions:
+        suggestions = [
+            "Review each incorrect question and write one-line concept notes.",
+            "Retake a similar level quiz after revision to improve consistency.",
+        ]
+        if wrong_questions:
+            suggestions.insert(0, "Start with the top incorrect questions listed in Weaknesses.")
+
+    return {
+        "summary": summary,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "suggestions": suggestions,
+    }
+
+
+def analyze_quiz_submission_report(report: dict[str, Any], focus: str | None = None) -> dict[str, Any]:
+    wrong_questions = [
+        str(item.get("question"))
+        for item in (report.get("question_feedback") or [])
+        if isinstance(item, dict) and not item.get("is_correct") and item.get("question")
+    ]
+
+    prompt = (
+        "You are an academic performance coach. Analyze the quiz report and provide constructive feedback.\n"
+        "Return ONLY valid JSON with this schema:\n"
+        "{\n"
+        '  "summary": "string",\n'
+        '  "strengths": ["string"],\n'
+        '  "weaknesses": ["string"],\n'
+        '  "suggestions": ["string"]\n'
+        "}\n"
+        "Feedback must be concise, actionable, and student-friendly.\n"
+        f"Incorrect question themes: {json.dumps(wrong_questions[:5], default=str)}\n"
+        f"Focus: {focus or 'performance improvement and next practice plan'}\n"
+        f"Quiz Report JSON:\n{json.dumps(report, default=str)}"
+    )
+
+    analysis = _generate_structured_json(prompt, "Quiz Performance Analysis")
+    fallback = {
+        "score": report.get("score"),
+        "total_marks": report.get("total_marks"),
+        "correct": report.get("correct_answers"),
+    }
+    return _force_quiz_analysis(analysis, fallback, report)
+
+
 def get_fee_risk_prediction(year: int | None = None, focus: str | None = None) -> dict[str, Any]:
     payment_rows = db.session.query(
         FeePayment.student_id.label("student_id"),

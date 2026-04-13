@@ -15,7 +15,7 @@ class BatchResource(db.Model):
     description = db.Column(db.Text, nullable=True)
     url = db.Column(db.String(500), nullable=False)
     resource_type = db.Column(db.String(40), nullable=False, default="link")
-    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     visible_to_students = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
     updated_at = db.Column(

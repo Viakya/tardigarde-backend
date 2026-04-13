@@ -49,7 +49,11 @@ class ProductionConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "sqlite+pysqlite:///./test.db")
+    SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    JWT_SECRET_KEY = os.getenv(
+        "TEST_JWT_SECRET_KEY",
+        "tardigrade-test-jwt-secret-key-with-32-plus-bytes",
+    )
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5)
 
 

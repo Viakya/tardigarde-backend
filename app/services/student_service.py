@@ -1,6 +1,6 @@
 from sqlalchemy.exc import IntegrityError
 
-from app.core.exceptions import ConflictError, ValidationError
+from app.core.exceptions import AppError, ConflictError, ValidationError
 from app.extensions import db
 from app.models import Attendance, Batch, Student, TestResult, User
 from app.services.parent_access_service import validate_parent_users
@@ -167,3 +167,41 @@ def disconnect_parent(student_id, parent_user_id):
     db.session.commit()
 
     return student
+
+
+def create_students_bulk(rows):
+    created = []
+    failed = []
+
+    for row in rows:
+        line = row.get("line")
+        payload = row.get("payload") or {}
+        try:
+            student = create_student(payload)
+            created.append({"line": line, "student": student.to_dict()})
+        except AppError as exc:
+            failed.append(
+                {
+                    "line": line,
+                    "user_id": payload.get("user_id"),
+                    "message": exc.message,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            failed.append(
+                {
+                    "line": line,
+                    "user_id": payload.get("user_id"),
+                    "message": str(exc) or "Failed to create student",
+                }
+            )
+
+    return {
+        "summary": {
+            "total": len(created) + len(failed),
+            "created": len(created),
+            "failed": len(failed),
+        },
+        "created": created,
+        "failed": failed,
+    }

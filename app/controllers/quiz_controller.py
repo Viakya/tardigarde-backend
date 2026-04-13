@@ -126,5 +126,13 @@ def submit_quiz_controller(quiz_id):
     current_user_id = _get_identity()
     role = (get_jwt().get("role") or "").lower()
 
-    submission = submit_quiz(quiz_id=quiz_id, answers=validated["answers"], current_user_id=current_user_id, role=role)
-    return api_response(True, "Quiz submitted", {"submission": submission.to_dict()}, 201)
+    result = submit_quiz(quiz_id=quiz_id, answers=validated["answers"], current_user_id=current_user_id, role=role)
+    return api_response(
+        True,
+        "Quiz submitted",
+        {
+            "submission": result["submission"].to_dict(),
+            "report": result["report"],
+        },
+        201,
+    )

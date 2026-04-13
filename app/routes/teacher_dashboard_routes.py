@@ -17,6 +17,7 @@ from app.controllers.teacher_dashboard_controller import (
     save_test_results_controller,
     get_attendance_history_controller,
     get_student_profile_controller,
+    get_batch_quiz_performance_controller,
 )
 from app.utils.auth import roles_required
 
@@ -84,6 +85,33 @@ def get_batches():
 })
 def get_students(batch_id):
     return get_batch_students_controller(batch_id)
+
+
+@teacher_dashboard_bp.get("/teacher/batches/<int:batch_id>/quiz-performance")
+@jwt_required()
+@roles_required("coach", "director")
+@swag_from({
+    "tags": ["Teacher Dashboard"],
+    "summary": "Get batch quiz reports and rankings",
+    "description": "Returns quiz-wise result summary and student ranking list for the selected batch",
+    "security": [{"BearerAuth": []}],
+    "parameters": [
+        {
+            "name": "batch_id",
+            "in": "path",
+            "type": "integer",
+            "required": True,
+            "description": "Batch ID"
+        }
+    ],
+    "responses": {
+        "200": {
+            "description": "Quiz performance retrieved successfully",
+        }
+    }
+})
+def get_quiz_performance(batch_id):
+    return get_batch_quiz_performance_controller(batch_id)
 
 
 @teacher_dashboard_bp.get("/teacher/batches/<int:batch_id>/attendance")

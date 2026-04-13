@@ -6,7 +6,9 @@ from app.controllers.reporting_controller import (
     batch_strength_controller,
     monthly_attendance_report_controller,
     revenue_by_month_controller,
+    risk_summary_controller,
     salary_expense_by_month_controller,
+    smart_nudges_controller,
 )
 from app.utils.auth import roles_required
 
@@ -46,3 +48,17 @@ def batch_strength_route():
 @swag_from({"tags": ["Reports"], "summary": "Get active vs inactive report across modules", "security": [{"BearerAuth": []}]})
 def active_vs_inactive_route():
     return active_vs_inactive_controller()
+
+
+@reports_bp.get("/reports/risk-summary")
+@roles_required("admin", "director", "manager")
+@swag_from({"tags": ["Reports"], "summary": "Get director risk summary", "security": [{"BearerAuth": []}]})
+def risk_summary_route():
+    return risk_summary_controller()
+
+
+@reports_bp.get("/reports/smart-nudges")
+@roles_required("admin", "director", "manager")
+@swag_from({"tags": ["Reports"], "summary": "Get smart nudges", "security": [{"BearerAuth": []}]})
+def smart_nudges_route():
+    return smart_nudges_controller()

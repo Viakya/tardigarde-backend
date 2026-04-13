@@ -279,3 +279,18 @@ class TestDeleteUser:
             headers=auth_headers("student"),
         )
         assert resp.status_code == 403
+
+# Additional tests for edge cases
+
+# Additional tests for edge cases
+
+def test_login_invalid_password(client):
+    res = client.post("/api/v1/auth/login", json={
+        "email": "wrong@mail.com",
+        "password": "wrong"
+    })
+
+    assert res.status_code == 401
+
+    data = res.get_json()
+    assert data["success"] is False

@@ -1,3 +1,6 @@
+import csv
+import io
+
 from flask import current_app, request
 
 from app.core.exceptions import ValidationError
@@ -15,6 +18,7 @@ from app.services.token_service import generate_access_token
 from app.utils.google_auth import verify_google_token
 from app.utils.response import api_response
 from app.validators.auth_validators import (
+    validate_bulk_registration_row,
     validate_google_login_payload,
     validate_login_payload,
     validate_registration_payload,
@@ -150,3 +154,83 @@ def update_user_controller(user_id):
 def delete_user_controller(user_id):
     user = delete_user(user_id)
     return api_response(True, "User deleted successfully", {"user": user.to_dict()}, 200)
+
+
+def register_users_bulk():
+    file = request.files.get("file")
+    if not file:
+        raise ValidationError("CSV file is required in 'file' field")
+
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".csv"):
+        raise ValidationError("Only .csv files are supported")
+
+    try:
+        raw = file.read().decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValidationError("CSV must be UTF-8 encoded") from exc
+
+    reader = csv.DictReader(io.StringIO(raw))
+    if not reader.fieldnames:
+        raise ValidationError("CSV header is missing")
+
+    required_headers = {"email", "full_name", "password", "role"}
+    incoming_headers = {str(h or "").strip() for h in reader.fieldnames}
+    missing = required_headers.difference(incoming_headers)
+    if missing:
+        raise ValidationError(f"CSV missing required headers: {', '.join(sorted(missing))}")
+
+    created = []
+    failed = []
+
+    for index, row in enumerate(reader, start=2):
+        payload = {
+            "email": (row.get("email") or "").strip(),
+            "full_name": (row.get("full_name") or "").strip(),
+            "password": (row.get("password") or "").strip(),
+            "role": (row.get("role") or "").strip(),
+        }
+
+        try:
+            validated = validate_bulk_registration_row(payload)
+            user = create_user(
+                email=validated["email"],
+                full_name=validated["full_name"],
+                password=validated["password"],
+                role=validated["role"],
+            )
+            created.append(
+                {
+                    "line": index,
+                    "user": user.to_dict(),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            message = getattr(exc, "message", str(exc)) or "Failed to create user"
+            failed.append(
+                {
+                    "line": index,
+                    "email": payload["email"],
+                    "message": message,
+                }
+            )
+
+    if not created and not failed:
+        raise ValidationError("CSV has no data rows")
+
+    status_code = 201 if not failed else 207
+    message = "Bulk user registration completed"
+    return api_response(
+        True,
+        message,
+        {
+            "summary": {
+                "total": len(created) + len(failed),
+                "created": len(created),
+                "failed": len(failed),
+            },
+            "created": created,
+            "failed": failed,
+        },
+        status_code,
+    )

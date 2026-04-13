@@ -16,6 +16,8 @@ from app.routes.teacher_dashboard_routes import teacher_dashboard_bp
 from app.routes.payment_routes import payments_bp
 from app.routes.batch_resource_routes import batch_resources_bp
 from app.routes.quiz_routes import quizzes_bp
+from app.routes.export_routes import exports_bp
+from app.routes.calendar_routes import calendar_bp
 
 
 def register_blueprints(app):
@@ -37,3 +39,5 @@ def register_blueprints(app):
     app.register_blueprint(payments_bp, url_prefix="/api/v1")
     app.register_blueprint(batch_resources_bp, url_prefix="/api/v1")
     app.register_blueprint(quizzes_bp, url_prefix="/api/v1")
+    app.register_blueprint(exports_bp, url_prefix="/api/v1")
+    app.register_blueprint(calendar_bp, url_prefix="/api/v1")
