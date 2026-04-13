@@ -14,3 +14,4 @@ pandas==2.2.3
 openpyxl==3.1.5
 reportlab==4.2.5
 setuptools>=70.0.0,<81
+gunicorn==23.0.0
