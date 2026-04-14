@@ -1,4 +1,4 @@
-from flask import request
+from flask import current_app, request
 from flask_jwt_extended import get_jwt, get_jwt_identity
 
 from app.core.exceptions import AuthenticationError, ValidationError
@@ -34,7 +34,15 @@ def create_razorpay_order_controller():
             raise AuthenticationError("Students can only pay their own fees", 403)
 
     order = create_razorpay_order(student_id=student_id, amount_in_rupees=amount)
-    return api_response(True, "Order created", {"order": order}, 201)
+    return api_response(
+        True,
+        "Order created",
+        {
+            "order": order,
+            "key_id": current_app.config.get("RAZORPAY_KEY_ID"),
+        },
+        201,
+    )
 
 
 def verify_razorpay_payment_controller():
